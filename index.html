@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body class="home">
   <div id="app">
@@ -86,6 +86,7 @@
           <li>📄 The paper folds in half, and your dot prints on the other side at the mirror spot.</li>
           <li>😋 If the print lands on a fish, you eat it!</li>
           <li>🏆 When every fish is eaten, whoever ate the most wins.</li>
+          <li>📱 On a phone, play with it turned sideways.</li>
         </ol>
       </details>
     </div>
@@ -137,11 +138,20 @@
     </div>
   </section>
 
+  <!-- Turn sideways (phones held upright during play; shown by CSS) -->
+  <section class="overlay rotate" id="rotate">
+    <div class="card">
+      <div class="phone-rot">📱</div>
+      <h2>Turn your phone sideways</h2>
+      <p>The paper is wide, so the game plays sideways. If the screen doesn't turn, switch off rotation lock.</p>
+    </div>
+  </section>
+
   <div class="banner" id="banner" hidden><div class="bcard"><div class="big"></div><div class="small"></div></div></div>
   <div class="toast" id="toast" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"
           onerror="var s=document.createElement('script');s.src='https://unpkg.com/@supabase/supabase-js@2.117.2/dist/umd/supabase.js';document.head.appendChild(s)"></script>
-  <script src="game.js?v=4"></script>
+  <script src="game.js?v=11"></script>
 </body>
 </html>

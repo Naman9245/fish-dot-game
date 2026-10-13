@@ -130,6 +130,7 @@ body.home .bottombar { visibility: hidden; }
 #table {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: grid;
   place-items: center;
@@ -150,8 +151,8 @@ body.home .bottombar { visibility: hidden; }
 #paper {
   position: relative;
   z-index: 1;
-  width: 300px;
-  height: 375px;
+  width: 400px;
+  height: 200px;
   perspective: 1400px;
   transition: transform 0.15s ease-out;
   cursor: default;
@@ -172,22 +173,16 @@ body.home .bottombar { visibility: hidden; }
 #paper.fold-L .pshadow { left: 50%; }
 #paper.fold-R .pshadow { right: 50%; }
 
+/* the fold itself is animated from game.js */
 .half {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 50%;
-  transition: transform var(--fold) ease-out;
 }
 .half.L { left: 0; transform-origin: 100% 50%; }
 .half.R { right: 0; transform-origin: 0% 50%; }
 .half.lifting { z-index: 4; }
-.half.f1 { transition-timing-function: ease-in; }
-.half.L.f1 { transform: rotateY(90deg); }
-.half.R.f1 { transform: rotateY(-90deg); }
-.half.f1.f2 { transition-timing-function: ease-out; }
-.half.L.f1.f2 { transform: rotateY(180deg); }
-.half.R.f1.f2 { transform: rotateY(-180deg); }
 
 .face {
   position: absolute;
@@ -534,6 +529,58 @@ body.home .bottombar { visibility: hidden; }
   .bottombar { padding: 4px 8px 10px; }
 }
 
+/* ---------- Turn-sideways card (phones held upright, during play) ---------- */
+.rotate { display: none; z-index: 45; }
+.phone-rot { font-size: 56px; line-height: 1; display: inline-block; animation: turn 2.4s ease-in-out infinite; }
+@keyframes turn { 0%, 20% { transform: rotate(0); } 50%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
+
+@media (orientation: portrait) and (max-width: 700px) {
+  body.in-play .rotate { display: flex; }
+}
+
+/* ---------- Phones held sideways: players on the sides, paper in the middle ---------- */
+@media (orientation: landscape) and (max-height: 520px) {
+  #app {
+    display: grid;
+    grid-template-columns: minmax(70px, 94px) minmax(0, 1fr) minmax(70px, 94px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: 'p0 table p1' 'home status mute';
+    gap: 6px 8px;
+    padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+  .topbar, .bottombar { display: contents; }
+  .vs, .deco { display: none; }
+  #p0 { grid-area: p0; }
+  #p1 { grid-area: p1; }
+  #table { grid-area: table; }
+  #homeBtn { grid-area: home; justify-self: center; }
+  #muteBtn { grid-area: mute; justify-self: center; }
+  #status { grid-area: status; min-height: 38px; padding: 6px 12px; font-size: 15px; }
+  .iconbtn { width: 40px; height: 40px; font-size: 18px; }
+
+  .player {
+    align-self: start;
+    flex-direction: column;
+    gap: 4px;
+    max-width: none;
+    padding: 10px 6px 8px;
+    text-align: center;
+  }
+  .player.turn { transform: scale(1.04); }
+  .pinfo { flex: none; width: 100%; }
+  .pscore { font-size: 26px; }
+
+  .toast { bottom: calc(52px + env(safe-area-inset-bottom)); }
+
+  .card { padding: 14px 16px; }
+  .card > * + *, .stack > * + * { margin-top: 8px; }
+  .card h1 { font-size: 30px; }
+  .card h2 { font-size: 20px; }
+  .logo, .trophy, .bigfish { font-size: 40px; }
+  .code { font-size: 26px; padding: 4px; }
+  .btn { padding: 9px 14px; font-size: 16px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .logo, .bigfish, .trophy, .status.myturn { animation: none; }
+  .logo, .bigfish, .trophy, .status.myturn, .phone-rot { animation: none; }
 }

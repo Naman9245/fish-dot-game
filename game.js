@@ -7,13 +7,14 @@
   // ---------- Config ----------
   const SUPABASE_URL = 'https://juuolfpbmoynjvkcanzg.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_aSgcYzOHbFaJUtCAXbWCGw_D9X6hhJ7'; // public key, safe in the browser
-  const CHANNEL_PREFIX = 'fishdot-v1-';
+  const CHANNEL_PREFIX = 'fishdot-v2-';
+  const STATE_VER = 2; // bump when the board format changes, so old saved games are ignored
 
-  const W = 100, H = 125, MID = 50; // paper units: a 4:5 sheet with the fold line at x = 50
+  const W = 200, H = 100, MID = 100; // paper units: a wide 2:1 sheet with the fold line at x = 100
   const FISH_COUNT = 10;
   const FISH_W = 15, FISH_H = 9;
-  const DOT_R = 2.1;
-  const HIT_TOL = 2.2; // extra room so "roughly on the fish" still counts
+  const DOT_R = 1.8;
+  const HIT_TOL = 2.0; // extra room so "roughly on the fish" still counts
   const T_FOLD = 380; // ms for each quarter of the fold
   const SEAT_COLORS = ['#7c3aed', '#ec4899'];
   const FISH_COLORS = ['#ff922b', '#4dabf7', '#20c997', '#fcc419', '#94d82d', '#3bc9db', '#f76707', '#1c7ed6', '#40c057', '#15aabf'];
@@ -60,21 +61,26 @@
 
   // ---------- Fish + rules ----------
   function makeFish() {
-    for (let attempt = 0; attempt < 60; attempt++) {
-      const minGap = 17.5 - attempt * 0.15;
+    const EDGE = 10.5; // keeps a tilted fish fully on the paper and off the fold line
+    const span = MID - 2 * EDGE; // usable width on each side of the fold
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const minGap = 17.5 - attempt * 0.1;
       const fish = [];
       for (let i = 0; i < FISH_COUNT; i++) {
-        const left = i < FISH_COUNT / 2; // half the fish on each side of the fold
         for (let t = 0; t < 300; t++) {
-          const x = left ? rand(10.5, MID - 10.5) : rand(MID + 10.5, W - 10.5);
+          // Anywhere on the whole sheet, either side of the fold.
+          const u = rand(0, 2 * span);
+          const x = u < span ? EDGE + u : MID + EDGE + (u - span);
           const y = rand(9, H - 9);
           if (fish.every((f) => Math.hypot(f.x - x, f.y - y) > minGap)) {
-            fish.push({ x: round2(x), y: round2(y), r: Math.round(rand(-24, 24)), s: round2(rand(0.9, 1.12)), fl: Math.random() < 0.5 ? 1 : 0, ci: 0, e: -1 });
+            fish.push({ x: round2(x), y: round2(y), r: Math.round(rand(-30, 30)), s: round2(rand(0.9, 1.12)), fl: Math.random() < 0.5 ? 1 : 0, ci: 0, e: -1 });
             break;
           }
         }
       }
-      if (fish.length === FISH_COUNT) {
+      const onLeft = fish.filter((f) => f.x < MID).length;
+      // Random split, but never an empty or nearly empty half.
+      if (fish.length === FISH_COUNT && onLeft >= 3 && onLeft <= FISH_COUNT - 3) {
         const colors = shuffle(FISH_COLORS.map((_, i) => i));
         fish.forEach((f, i) => { f.ci = colors[i % colors.length]; });
         return fish;
@@ -82,7 +88,7 @@
     }
     // Never expected, but keep the game playable: two neat columns.
     return Array.from({ length: FISH_COUNT }, (_, i) => ({
-      x: i % 2 ? 75 : 25, y: 12.5 + Math.floor(i / 2) * 25, r: 0, s: 1, fl: i % 2, ci: i % FISH_COLORS.length, e: -1,
+      x: i % 2 ? 150 : 50, y: 10 + Math.floor(i / 2) * 20, r: 0, s: 1, fl: i % 2, ci: i % FISH_COLORS.length, e: -1,
     }));
   }
 
@@ -116,14 +122,14 @@
 
   function newGame(code) {
     return {
-      room: code, version: 1, stamp: randId(8), phase: 'waiting', round: 1,
+      ver: STATE_VER, room: code, version: 1, stamp: randId(8), phase: 'waiting', round: 1,
       players: [{ id: me.id, name: me.name }], fish: makeFish(), moves: [], turn: 0, first: 0,
     };
   }
 
   function validState(s, code) {
     try {
-      if (!s || typeof s !== 'object' || s.room !== (code || room)) return false;
+      if (!s || typeof s !== 'object' || s.ver !== STATE_VER || s.room !== (code || room)) return false;
       if (!Number.isInteger(s.version) || typeof s.stamp !== 'string' || !Number.isInteger(s.round)) return false;
       if (!['waiting', 'playing', 'over'].includes(s.phase) || (s.turn !== 0 && s.turn !== 1)) return false;
       if (!Array.isArray(s.players) || s.players.length < 1 || s.players.length > 2) return false;
@@ -160,9 +166,15 @@
   const demo = { fish: makeFish(), moves: [] };
 
   let sb = null, channel = null, connected = false, connFails = 0;
+  let connLostAt = 0; // when the live connection last dropped; short blips are ridden out
   let online = new Set(), presenceReady = false;
   let lastSeen = new Map(); // player id -> last time we heard a message from them
   let ticks = 0;
+  const debugLog = []; // recent connection events, readable via window.fishdot.log
+  const dlog = (...parts) => {
+    debugLog.push(new Date().toISOString().slice(11, 23) + ' ' + parts.join(' '));
+    if (debugLog.length > 80) debugLog.shift();
+  };
 
   // ---------- Board rendering ----------
   function place(el, side, x, y, w, h) {
@@ -233,24 +245,27 @@
 
   function fitPaper() {
     const t = $('#table');
-    const w = Math.floor(Math.max(140, Math.min(t.clientWidth - 24, ((t.clientHeight - 16) * W) / H, 620)));
+    const w = Math.floor(Math.max(160, Math.min(t.clientWidth - 16, ((t.clientHeight - 12) * W) / H, 1100)));
     paper.style.width = w + 'px';
     paper.style.height = Math.round((w * H) / W) + 'px';
+    paper.style.perspective = Math.round(w * 2.2) + 'px'; // same fold depth at any size
   }
 
   // ---------- UI rendering ----------
   // Presence is the main signal; recent messages back it up if presence hiccups.
   const recentlySeen = (id) => Date.now() - (lastSeen.get(id) || 0) < 12000;
+  // Connected, or dropped only a moment ago (moves still go out over plain HTTP meanwhile).
+  const linkOk = () => connected || (connLostAt > 0 && Date.now() - connLostAt < 6000);
 
   function isOnline(s, seat) {
     const p = s && s.players[seat];
     if (!p) return false;
-    return p.id === me.id ? connected : online.has(p.id) || recentlySeen(p.id);
+    return p.id === me.id ? linkOk() : online.has(p.id) || recentlySeen(p.id);
   }
 
   function canTap() {
     const s = state;
-    if (!room || !s || busy || !connected || s.phase !== 'playing' || s.players.length < 2) return false;
+    if (!room || !s || busy || !linkOk() || s.phase !== 'playing' || s.players.length < 2) return false;
     const mine = seatOf(s, me.id);
     return mine >= 0 && s.turn === mine && isOnline(s, 1 - mine);
   }
@@ -293,8 +308,8 @@
     if (room) {
       const mine = seatOf(s, me.id), opp = 1 - mine;
       if (!s) text = connected ? 'Looking for the game… 🔎' : 'Connecting… 📶';
-      else if (busy) text = 'Folding the paper… 🤞';
-      else if (!connected) text = connFails > 1 ? "Can't reach the game server… retrying 📶" : 'Connecting… 📶';
+      else if (busy && view !== state) text = 'Folding the paper… 🤞';
+      else if (!linkOk()) text = connFails > 1 ? "Can't reach the game server… retrying 📶" : 'Connecting… 📶';
       else if (mine < 0) text = 'Pick your seat 👀';
       else if (s.phase === 'waiting') text = 'Waiting for your partner to join… 💌';
       else if (s.phase === 'over') text = peekOver ? 'Game over! Tap here for results 🏁' : 'Game over! 🏁';
@@ -313,6 +328,8 @@
     const mine = seatOf(s, me.id);
     const looking = inRoom && (!s || (mine < 0 && s.players.length >= 2 && !presenceReady));
     document.body.classList.toggle('home', !inRoom);
+    // On a phone held upright this shows the "turn sideways" card (CSS decides by orientation).
+    document.body.classList.toggle('in-play', inRoom && !!s && mine >= 0 && s.phase === 'playing');
     $('#home').hidden = inRoom;
     $('#looking').hidden = !looking;
     $('#lobby').hidden = !(inRoom && s && s.phase === 'waiting' && mine >= 0);
@@ -634,24 +651,40 @@
   })();
 
   // ---------- Moves + fold animation ----------
+  const clearTurns = (half) => { if (half.getAnimations) half.getAnimations().forEach((a) => a.cancel()); };
+
   function resetFold() {
     paper.classList.remove('folding', 'fold-L', 'fold-R', 'press');
-    for (const h of [halfL, halfR]) h.classList.remove('lifting', 'shaded', 'f1', 'f2', 'show-back');
+    for (const h of [halfL, halfR]) {
+      clearTurns(h);
+      h.classList.remove('lifting', 'shaded', 'show-back');
+    }
+  }
+
+  // Swing a half around the fold line; resolves once it has really arrived, so the
+  // front/back swap stays exact even on a slow phone. Browsers pause animations in a
+  // hidden tab, so a time limit keeps the game from freezing there.
+  function turnHalf(half, from, to, easing) {
+    const anim = half.animate(
+      [{ transform: 'rotateY(' + from + 'deg)' }, { transform: 'rotateY(' + to + 'deg)' }],
+      { duration: T_FOLD, easing, fill: 'forwards' },
+    );
+    return Promise.race([anim.finished.catch(() => {}), wait(T_FOLD + 800)]);
   }
 
   // Fold the half holding the dot over the other half, press, then open again.
   async function fold(side, sess, atFolded) {
     const half = side === 'L' ? halfL : halfR;
     const other = side === 'L' ? halfR : halfL;
+    const dir = side === 'L' ? 1 : -1; // either way the half lifts toward you
     paper.classList.add('folding', 'fold-' + side);
     half.classList.add('lifting');
     other.classList.add('shaded');
     Sound.paper();
-    half.classList.add('f1'); // up to 90°
-    await wait(T_FOLD);
+    await turnHalf(half, 0, 90 * dir, 'ease-in');
     if (sess !== session) return;
-    half.classList.add('show-back', 'f2'); // over to 180°, showing the back of the paper
-    await wait(T_FOLD);
+    half.classList.add('show-back'); // edge-on right now, so the swap can't be seen
+    await turnHalf(half, 90 * dir, 180 * dir, 'ease-out');
     if (sess !== session) return;
     Sound.thump();
     paper.classList.add('press');
@@ -661,12 +694,12 @@
     paper.classList.remove('press', 'fold-' + side);
     other.classList.remove('shaded');
     Sound.paper();
-    half.classList.remove('f2'); // back up to 90°
-    await wait(T_FOLD);
+    await turnHalf(half, 180 * dir, 90 * dir, 'ease-in');
     if (sess !== session) return;
-    half.classList.remove('show-back', 'f1'); // and flat again
-    await wait(T_FOLD);
+    half.classList.remove('show-back');
+    await turnHalf(half, 90 * dir, 0, 'ease-out');
     if (sess !== session) return;
+    clearTurns(half);
     half.classList.remove('lifting');
     paper.classList.remove('folding');
   }
@@ -887,14 +920,17 @@
       .on('broadcast', { event: 'state' }, (msg) => { if (channel === ch) safe(() => onStateMsg(msg.payload)); })
       .on('broadcast', { event: 'ver' }, (msg) => { if (channel === ch) safe(() => onVer(msg.payload)); })
       .on('presence', { event: 'sync' }, () => { if (channel === ch) safe(onPresence); })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
+        dlog('channel', status, err ? String(err.message || err) : '', channel === ch ? '' : '(stale)');
         if (channel !== ch) return;
         if (status === 'SUBSCRIBED') {
           connected = true;
+          connLostAt = 0;
           connFails = 0;
           ch.track({ id: me.id, name: me.name }).catch(() => {});
           sendHello();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (connected) connLostAt = Date.now();
           connected = false;
           connFails += 1;
         }
@@ -990,6 +1026,7 @@
     channel = null;
     if (ch && sb) sb.removeChannel(ch).catch(() => {});
     connected = false;
+    connLostAt = 0;
     connFails = 0;
     online = new Set();
     lastSeen = new Map();
@@ -1084,7 +1121,7 @@
     if (!canTap()) {
       const mine = seatOf(state, me.id);
       if (busy || mine < 0 || state.phase !== 'playing' || state.players.length < 2) return;
-      if (!connected) toast('Reconnecting… one sec 📶');
+      if (!linkOk()) toast('Reconnecting… one sec 📶');
       else if (!isOnline(state, 1 - mine)) toast(nameOf(state, 1 - mine) + ' is offline. Wait a moment 💤');
       else if (state.turn !== mine) toast("It's " + nameOf(state, 1 - mine) + "'s turn 😉");
       return;
@@ -1185,6 +1222,8 @@
     get connected() { return connected; },
     get online() { return [...online]; },
     get presence() { return channel ? channel.presenceState() : null; },
+    get log() { return debugLog.slice(); },
+    get socket() { return sb && sb.realtime ? sb.realtime.connectionState() : null; },
   };
 
   // ---------- Boot ----------
