@@ -20,6 +20,7 @@ body {
   color: var(--ink);
   overflow: hidden;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
@@ -160,18 +161,19 @@ body.home .bottombar { visibility: hidden; }
 #paper.can-tap { cursor: crosshair; }
 #paper.press { transform: scale(0.985); }
 
+/* One shadow per half; the lifted half's shadow fades (opacity is cheap to animate). */
 .pshadow {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 0;
-  right: 0;
-  border-radius: 6px;
+  width: 50%;
   box-shadow: 0 22px 40px rgba(20, 8, 0, 0.5), 0 3px 8px rgba(20, 8, 0, 0.35);
-  transition: left calc(var(--fold) * 2) ease-in-out, right calc(var(--fold) * 2) ease-in-out;
+  transition: opacity calc(var(--fold) * 2) ease-in-out;
 }
-#paper.fold-L .pshadow { left: 50%; }
-#paper.fold-R .pshadow { right: 50%; }
+.pshadow.L { left: 0; border-radius: 6px 0 0 6px; clip-path: inset(-80px 0 -80px -80px); }
+.pshadow.R { right: 0; border-radius: 0 6px 6px 0; clip-path: inset(-80px -80px -80px 0); }
+#paper.fold-L .pshadow.L,
+#paper.fold-R .pshadow.R { opacity: 0; }
 
 /* the fold itself is animated from game.js */
 .half {
@@ -179,6 +181,7 @@ body.home .bottombar { visibility: hidden; }
   top: 0;
   bottom: 0;
   width: 50%;
+  will-change: transform; /* ready on the GPU before the fold starts */
 }
 .half.L { left: 0; transform-origin: 100% 50%; }
 .half.R { right: 0; transform-origin: 0% 50%; }
@@ -301,6 +304,7 @@ body.home .bottombar { visibility: hidden; }
 }
 .iconbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25); }
 .status {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 44px;
@@ -316,7 +320,18 @@ body.home .bottombar { visibility: hidden; }
   border-radius: 999px;
   box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2);
 }
-.status.myturn { background: #fff1bf; animation: glow 1.6s ease-in-out infinite; }
+.status.myturn { background: #fff1bf; }
+/* "your turn" pulse: only opacity animates, so it stays smooth and light on battery */
+.status.myturn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 5px rgba(255, 190, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  animation: pulse 1.6s ease-in-out infinite;
+}
 
 /* ---------- Overlays + cards ---------- */
 .overlay {
@@ -483,6 +498,23 @@ body.home .bottombar { visibility: hidden; }
   pointer-events: none;
 }
 
+.update {
+  position: fixed;
+  top: calc(74px + env(safe-area-inset-top)); /* just below the scoreboards */
+  left: 50%;
+  z-index: 70;
+  padding: 10px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: #2f9e44;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 4px 0 #1b6e2d, 0 10px 24px rgba(20, 8, 0, 0.35);
+  transform: translateX(-50%);
+  animation: toastIn 0.3s ease-out;
+}
+
 .particle {
   position: fixed;
   left: var(--x);
@@ -510,10 +542,7 @@ body.home .bottombar { visibility: hidden; }
   100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(1.15); }
 }
 @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.7); } 100% { transform: scale(1); } }
-@keyframes glow {
-  0%, 100% { box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2), 0 0 0 0 rgba(255, 190, 0, 0.65); }
-  50% { box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2), 0 0 0 8px rgba(255, 190, 0, 0); }
-}
+@keyframes pulse { 50% { opacity: 1; } }
 @keyframes bob { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(6deg); } }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
@@ -571,6 +600,7 @@ body.home .bottombar { visibility: hidden; }
   .pscore { font-size: 26px; }
 
   .toast { bottom: calc(52px + env(safe-area-inset-bottom)); }
+  .update { top: calc(8px + env(safe-area-inset-top)); }
 
   .card { padding: 14px 16px; }
   .card > * + *, .stack > * + * { margin-top: 8px; }
@@ -582,5 +612,5 @@ body.home .bottombar { visibility: hidden; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo, .bigfish, .trophy, .status.myturn, .phone-rot { animation: none; }
+  .logo, .bigfish, .trophy, .status.myturn::after, .phone-rot { animation: none; }
 }

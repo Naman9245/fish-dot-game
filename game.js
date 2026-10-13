@@ -7,14 +7,16 @@
   // ---------- Config ----------
   const SUPABASE_URL = 'https://juuolfpbmoynjvkcanzg.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_aSgcYzOHbFaJUtCAXbWCGw_D9X6hhJ7'; // public key, safe in the browser
-  const CHANNEL_PREFIX = 'fishdot-v2-';
-  const STATE_VER = 2; // bump when the board format changes, so old saved games are ignored
+  const CHANNEL_PREFIX = 'fishdot-v3-';
+  const STATE_VER = 3; // bump when the board or rules change, so old games and old phones don't mix
+  // This build's number, taken from "game.js?v=N" in index.html; version.json holds the deployed one.
+  const BUILD = Number((/[?&]v=(\d+)/.exec((document.currentScript && document.currentScript.src) || '') || [])[1]) || 0;
 
   const W = 200, H = 100, MID = 100; // paper units: a wide 2:1 sheet with the fold line at x = 100
   const FISH_COUNT = 10;
-  const FISH_W = 15, FISH_H = 9;
-  const DOT_R = 1.8;
-  const HIT_TOL = 2.0; // extra room so "roughly on the fish" still counts
+  const FISH_W = 12, FISH_H = 7.2; // same 150:90 shape as the fish drawing
+  const DOT_R = 1.5;
+  const HIT_TOL = 0.8; // the print must really touch the fish: about half the dot over its outline
   const T_FOLD = 380; // ms for each quarter of the fold
   const SEAT_COLORS = ['#7c3aed', '#ec4899'];
   const FISH_COLORS = ['#ff922b', '#4dabf7', '#20c997', '#fcc419', '#94d82d', '#3bc9db', '#f76707', '#1c7ed6', '#40c057', '#15aabf'];
@@ -35,6 +37,7 @@
   const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
   const round2 = (n) => Math.round(n * 100) / 100;
   const safe = (fn) => { try { fn(); } catch (e) { console.error('fishdot:', e); } };
+  const clip = (str, n) => Array.from(str).slice(0, n).join(''); // never cuts an emoji in half
 
   function randId(len) {
     const abc = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -56,24 +59,24 @@
     set(k, v) { try { localStorage.setItem('fishdot.' + k, v); } catch (e) { /* private mode: no saving */ } },
   };
 
-  const me = { id: store.get('id') || randId(12), name: (store.get('name') || '').slice(0, 14) };
+  const me = { id: store.get('id') || randId(12), name: clip(store.get('name') || '', 14) };
   store.set('id', me.id);
 
   // ---------- Fish + rules ----------
   function makeFish() {
-    const EDGE = 10.5; // keeps a tilted fish fully on the paper and off the fold line
+    const EDGE = 8.5; // keeps a tilted fish fully on the paper and off the fold line
     const span = MID - 2 * EDGE; // usable width on each side of the fold
     for (let attempt = 0; attempt < 80; attempt++) {
-      const minGap = 17.5 - attempt * 0.1;
+      const minGap = 15 - attempt * 0.08;
       const fish = [];
       for (let i = 0; i < FISH_COUNT; i++) {
         for (let t = 0; t < 300; t++) {
           // Anywhere on the whole sheet, either side of the fold.
           const u = rand(0, 2 * span);
           const x = u < span ? EDGE + u : MID + EDGE + (u - span);
-          const y = rand(9, H - 9);
+          const y = rand(7.5, H - 7.5);
           if (fish.every((f) => Math.hypot(f.x - x, f.y - y) > minGap)) {
-            fish.push({ x: round2(x), y: round2(y), r: Math.round(rand(-30, 30)), s: round2(rand(0.9, 1.12)), fl: Math.random() < 0.5 ? 1 : 0, ci: 0, e: -1 });
+            fish.push({ x: round2(x), y: round2(y), r: Math.round(rand(-30, 30)), s: round2(rand(0.9, 1.1)), fl: Math.random() < 0.5 ? 1 : 0, ci: 0, e: -1 });
             break;
           }
         }
@@ -92,24 +95,33 @@
     }));
   }
 
+  // The fish's real outline, in the fish drawing's own units (150 x 90 box, centre at 0,0):
+  // the oval body (with its outline stroke) plus the tail fan.
+  const BODY = { cx: -13, rx: 52, ry: 32 };
+  const TAIL = { cx: 55, r: 22 };
+
   // Which uneaten fish does a print at (px, py) land on? -1 for none.
   function findHit(fish, px, py) {
     let best = -1, bestD = Infinity;
     fish.forEach((f, i) => {
       if (f.e !== -1) return;
+      const k = (FISH_W * f.s) / 150; // paper units per drawing unit
       const a = (f.r * Math.PI) / 180;
       const dx = px - f.x, dy = py - f.y;
-      const lx = dx * Math.cos(a) + dy * Math.sin(a);
-      const ly = -dx * Math.sin(a) + dy * Math.cos(a);
-      const rx = (FISH_W / 2) * f.s + HIT_TOL, ry = (FISH_H / 2) * f.s + HIT_TOL;
-      const d = (lx / rx) ** 2 + (ly / ry) ** 2;
+      let lx = (dx * Math.cos(a) + dy * Math.sin(a)) / k; // undo the tilt
+      const ly = (-dx * Math.sin(a) + dy * Math.cos(a)) / k;
+      if (f.fl) lx = -lx; // undo the left/right flip
+      const tol = HIT_TOL / k;
+      const body = ((lx - BODY.cx) / (BODY.rx + tol)) ** 2 + (ly / (BODY.ry + tol)) ** 2;
+      const tail = ((lx - TAIL.cx) ** 2 + ly ** 2) / (TAIL.r + tol) ** 2;
+      const d = Math.min(body, tail);
       if (d <= 1 && d < bestD) { best = i; bestD = d; }
     });
     return best;
   }
 
   const seatOf = (s, id) => (s ? s.players.findIndex((p) => p.id === id) : -1);
-  const nameOf = (s, seat) => ((s && s.players[seat] && s.players[seat].name) || (seat === 0 ? 'Player 1' : 'Player 2')).slice(0, 14);
+  const nameOf = (s, seat) => clip((s && s.players[seat] && s.players[seat].name) || (seat === 0 ? 'Player 1' : 'Player 2'), 14);
   const scoreOf = (s, seat) => (s ? s.fish.filter((f) => f.e === seat).length : 0);
   const bump = (s) => { s.version += 1; s.stamp = randId(8); };
 
@@ -229,7 +241,10 @@
     return el;
   }
 
+  let builtFor = null; // the state the board was last drawn from, so a move can skip a redraw
+
   function buildBoard(s, fadeAll) {
+    builtFor = fadeAll ? null : s;
     layerL.textContent = '';
     layerR.textContent = '';
     if (!s) return;
@@ -283,7 +298,7 @@
       else if (isTurn) meta = p.id === me.id ? 'your turn!' : 'thinking… 🤔';
       else if (p.id === me.id) meta = 'you';
       else meta = on ? 'online' : 'offline 💤';
-      card.querySelector('.avatar-letter').textContent = p ? (p.name.trim().charAt(0) || '?').toUpperCase() : '?';
+      card.querySelector('.avatar-letter').textContent = p ? (Array.from(p.name.trim())[0] || '?').toUpperCase() : '?';
       card.querySelector('.pname').textContent = p ? nameOf(s, seat) : 'Waiting…';
       card.querySelector('.pmeta').textContent = meta;
       card.classList.toggle('turn', isTurn);
@@ -712,11 +727,13 @@
     const color = SEAT_COLORS[mv.by];
     const side = sideOf(mv.x), other = side === 'L' ? 'R' : 'L';
     try {
-      buildBoard(prev, true);
+      // The board usually already shows `prev`; then just fade the old dots instead of redrawing.
+      if (builtFor === prev) paper.querySelectorAll('.dot, .print').forEach((el) => el.classList.add('old'));
+      else buildBoard(prev, true);
       refreshUI();
       layerOf(side).appendChild(spotEl(side, mv.x, mv.y, color, 'dot', false, true));
       Sound.drop();
-      await wait(600);
+      await wait(550);
       if (sess !== session) return;
       await fold(side, sess, () => layerOf(other).appendChild(spotEl(other, W - mv.x, mv.y, color, 'print', false, true)));
       if (sess !== session) return;
@@ -738,15 +755,15 @@
         refreshUI();
         if (mine) {
           Sound.yum();
-          showBanner(pick(YUM_BIG), pick(YUM_SMALL), color, 2300);
-          burst(['🐟', '😋', '✨', '💖', '🤤', '🫧'], 18, origin);
+          showBanner(pick(YUM_BIG), pick(YUM_SMALL), color, 2100);
+          burst(['🐟', '😋', '✨', '💖', '🤤', '🫧'], 16, origin);
           Sound.say(pick(YUM_SAY), 450);
         } else {
           Sound.aww();
-          showBanner(who + ' ate a fish! 🐟', next.phase === 'over' ? 'That was the last fish!' : pick(ATE_SMALL), color, 2300);
+          showBanner(who + ' ate a fish! 🐟', next.phase === 'over' ? 'That was the last fish!' : pick(ATE_SMALL), color, 2100);
           Sound.say(who + ' ate a fish!', 350);
         }
-        await wait(2500);
+        await wait(2300);
       } else {
         refreshUI();
         Sound.miss();
@@ -897,7 +914,8 @@
     if (!(window.supabase && window.supabase.createClient)) return null;
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-      realtime: { params: { eventsPerSecond: 20 } },
+      // A quicker heartbeat notices a dead connection (e.g. after the phone slept) sooner.
+      realtime: { params: { eventsPerSecond: 20 }, heartbeatIntervalMs: 10000 },
     });
     return sb;
   }
@@ -1084,7 +1102,7 @@
   }
 
   function requireName() {
-    const name = $('#nameInput').value.trim().replace(/\s+/g, ' ').slice(0, 14);
+    const name = clip($('#nameInput').value.trim().replace(/\s+/g, ' '), 14);
     if (!name) {
       $('#homeErr').textContent = 'Type your name first 🙂';
       $('#nameInput').focus();
@@ -1093,6 +1111,22 @@
     me.name = name;
     store.set('name', name);
     return true;
+  }
+
+  // ---------- Updates ----------
+  // When a newer version is published, offer a one-tap refresh so both phones play the same game.
+  let updateOffered = false;
+  async function checkForUpdate() {
+    if (!BUILD || updateOffered) return;
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const v = (await r.json()).v;
+      if (Number.isInteger(v) && v > BUILD) {
+        updateOffered = true;
+        $('#update').hidden = false;
+      }
+    } catch (e) { /* offline: try again later */ }
   }
 
   // ---------- Sharing ----------
@@ -1207,9 +1241,16 @@
   $('#overPeek').addEventListener('click', () => { peekOver = true; refreshUI(); });
   $('#status').addEventListener('click', () => { if (peekOver) { peekOver = false; refreshUI(); } });
 
+  $('#update').addEventListener('click', () => {
+    // A fresh query string skips any cached copy of the page.
+    location.replace(location.pathname + (room ? '?room=' + encodeURIComponent(room) + '&' : '?') + 'u=' + Date.now());
+  });
+
   document.addEventListener('pointerdown', () => Sound.resume(), { passive: true });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && room && channel && connected) sendHello();
+    if (document.visibilityState !== 'visible') return;
+    checkForUpdate();
+    if (room && channel && connected) sendHello();
   });
   window.addEventListener('unhandledrejection', (e) => console.warn('fishdot:', e.reason));
 
@@ -1224,6 +1265,7 @@
     get presence() { return channel ? channel.presenceState() : null; },
     get log() { return debugLog.slice(); },
     get socket() { return sb && sb.realtime ? sb.realtime.connectionState() : null; },
+    build: BUILD,
   };
 
   // ---------- Boot ----------
@@ -1232,4 +1274,6 @@
   renderAll();
   showHome(parseRoom(new URLSearchParams(location.search).get('room')));
   setInterval(syncTick, 5000);
+  setTimeout(checkForUpdate, 4000);
+  setInterval(checkForUpdate, 10 * 60 * 1000);
 })();
