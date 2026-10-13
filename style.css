@@ -187,13 +187,12 @@ body.home .bottombar { visibility: hidden; }
 .half.R { right: 0; transform-origin: 0% 50%; }
 .half.lifting { z-index: 4; }
 
+/* Plain paper on purpose: a dot grid would give players marks to count when mirroring. */
 .face {
   position: absolute;
   inset: 0;
   overflow: hidden;
   background-color: var(--cream);
-  background-image: radial-gradient(rgba(120, 90, 60, 0.07) 1px, rgba(0, 0, 0, 0) 1.3px);
-  background-size: 7px 7px;
 }
 .half.L .face { border-radius: 6px 0 0 6px; }
 .half.R .face { border-radius: 0 6px 6px 0; }
@@ -201,7 +200,6 @@ body.home .bottombar { visibility: hidden; }
   visibility: hidden;
   background-color: #efe4cf;
   background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0) 40%);
-  background-size: auto;
 }
 .half.show-back .face.front { visibility: hidden; }
 .half.show-back .face.back { visibility: visible; }
@@ -443,6 +441,7 @@ body.home .bottombar { visibility: hidden; }
 .waiting::after { content: ''; animation: dots 1.4s steps(4) infinite; }
 
 .trophy { font-size: 64px; line-height: 1; display: inline-block; animation: bob 1.8s ease-in-out infinite; }
+#overTitle { white-space: pre-line; font-size: 28px; }
 .finalscores { display: flex; gap: 10px; justify-content: center; }
 .fs {
   flex: 1;

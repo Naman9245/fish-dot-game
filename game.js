@@ -415,12 +415,15 @@
     if (winner < 0) {
       title = "It's a tie! 🤝"; sub = 'Same number of fish. Perfect match 💕'; icon = '🤝'; speech = "It's a tie!";
     } else if (winner === mine) {
-      title = 'You win! 🏆'; sub = 'Fish champion! So many yummy fish 😋'; speech = 'You win! Fish champion!';
+      title = 'Winner winner\nfish dinner! 🐟🍽️'; sub = 'You win, ' + nameOf(s, winner) + '! 🏆';
+      speech = 'Winner winner, fish dinner!';
     } else {
-      title = nameOf(s, winner) + ' wins! 🏆'; sub = 'Rematch? Go get those fish! 😜'; speech = nameOf(s, winner) + ' wins!';
+      title = 'Winner winner\nfish dinner! 🐟🍽️'; sub = nameOf(s, winner) + ' wins! Rematch? 😜'; icon = '🐟';
+      speech = nameOf(s, winner) + ' wins! Winner winner, fish dinner!';
     }
     $('#overIcon').textContent = icon;
     $('#overTitle').textContent = title;
+    $('#overTitle').style.color = winner < 0 ? '' : SEAT_COLORS[winner];
     $('#overSub').textContent = sub;
     const box = $('#finalScores');
     box.textContent = '';
