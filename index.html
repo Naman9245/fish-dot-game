@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Fish Dot 🐟</title>
+  <meta name="description" content="Drop a dot, fold the paper, eat the fish! A cozy game for two.">
+  <meta property="og:title" content="Fish Dot 🐟">
+  <meta property="og:description" content="Drop a dot, fold the paper, eat the fish! A cozy game for two.">
+  <meta name="theme-color" content="#5b3a22">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐟</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body class="home">
+  <div id="app">
+    <header class="topbar">
+      <div class="player s0" id="p0">
+        <div class="avatar"><span class="avatar-letter">?</span><i class="online-dot"></i></div>
+        <div class="pinfo"><div class="pname">—</div><div class="pmeta"></div></div>
+        <div class="pscore"><b>0</b><span>🐟</span></div>
+      </div>
+      <div class="vs">VS</div>
+      <div class="player s1" id="p1">
+        <div class="avatar"><span class="avatar-letter">?</span><i class="online-dot"></i></div>
+        <div class="pinfo"><div class="pname">—</div><div class="pmeta"></div></div>
+        <div class="pscore"><b>0</b><span>🐟</span></div>
+      </div>
+    </header>
+
+    <main id="table">
+      <div class="deco d1">🕯️</div>
+      <div class="deco d2">☕</div>
+      <div class="deco d3">🪴</div>
+      <div class="deco d4">🍪</div>
+      <div id="paper" role="button" aria-label="The paper. Tap to drop a dot">
+        <div class="pshadow"></div>
+        <div class="half L" id="halfL">
+          <div class="face front"><div class="layer" id="layerL"></div><div class="shade"></div></div>
+          <div class="face back"></div>
+        </div>
+        <div class="half R" id="halfR">
+          <div class="face front"><div class="layer" id="layerR"></div><div class="shade"></div></div>
+          <div class="face back"></div>
+        </div>
+        <div class="foldline"></div>
+      </div>
+    </main>
+
+    <footer class="bottombar">
+      <button class="iconbtn" id="homeBtn" aria-label="Home">🏠</button>
+      <div class="status" id="status" aria-live="polite"></div>
+      <button class="iconbtn" id="muteBtn" aria-label="Sound on or off">🔊</button>
+    </footer>
+  </div>
+
+  <!-- Home -->
+  <section class="overlay" id="home">
+    <div class="card">
+      <div class="logo">🐟</div>
+      <h1>Fish Dot</h1>
+      <p class="tag">Drop a dot, fold the paper,<br>eat the fish! 😋</p>
+      <input class="input" id="nameInput" maxlength="14" placeholder="Your name" autocomplete="off" autocapitalize="words" enterkeyhint="go">
+      <div class="stack" id="joinFromLink" hidden>
+        <p>You're invited to game <b id="linkCode"></b> 💌</p>
+        <button class="btn" id="joinLinkBtn">Join Game</button>
+        <button class="linkbtn" id="notThisGame">or start a new game</button>
+      </div>
+      <div class="stack" id="mainActions">
+        <button class="btn purple" id="continueBtn" hidden>▶ Continue game</button>
+        <button class="btn" id="createBtn">Create Game ✨</button>
+        <div class="divider">or join with a code</div>
+        <div class="row">
+          <input class="input" id="codeInput" placeholder="FISH-1234" maxlength="9" autocomplete="off" autocapitalize="characters" enterkeyhint="go">
+          <button class="btn small pink" id="joinCodeBtn">Join</button>
+        </div>
+      </div>
+      <p class="err" id="homeErr"></p>
+      <details class="how">
+        <summary>How to play?</summary>
+        <ol>
+          <li>🐟 10 fish are hiding all over the paper.</li>
+          <li>💅 On your turn, tap anywhere to drop a nail-polish dot.</li>
+          <li>📄 The paper folds in half, and your dot prints on the other side at the mirror spot.</li>
+          <li>😋 If the print lands on a fish, you eat it!</li>
+          <li>🏆 When every fish is eaten, whoever ate the most wins.</li>
+        </ol>
+      </details>
+    </div>
+  </section>
+
+  <!-- Waiting for partner -->
+  <section class="overlay" id="lobby" hidden>
+    <div class="card">
+      <div class="bigfish">🐟</div>
+      <h2>Your game is ready!</h2>
+      <p>Send this to your partner:</p>
+      <div class="code" id="lobbyCode">FISH-0000</div>
+      <button class="btn green" id="waBtn">Share on WhatsApp</button>
+      <button class="btn ghost" id="copyBtn">🔗 Copy link</button>
+      <button class="btn ghost" id="shareBtn" hidden>📤 Share…</button>
+      <p class="waiting">Waiting for your partner to join</p>
+    </div>
+  </section>
+
+  <!-- Looking for a game -->
+  <section class="overlay" id="looking" hidden>
+    <div class="card">
+      <div class="bigfish">🎣</div>
+      <h2>Finding game <span id="lookCode"></span></h2>
+      <p id="lookHint">Connecting…</p>
+      <button class="btn ghost" id="lookBack">⬅ Back</button>
+    </div>
+  </section>
+
+  <!-- Seat picker -->
+  <section class="overlay" id="seat" hidden>
+    <div class="card">
+      <h2>Who are you? 👀</h2>
+      <p>This game is between <b id="seatNames"></b>.</p>
+      <div class="stack" id="seatBtns"></div>
+      <button class="btn ghost" id="seatBack">⬅ Back</button>
+    </div>
+  </section>
+
+  <!-- Game over -->
+  <section class="overlay" id="over" hidden>
+    <div class="card">
+      <div class="trophy" id="overIcon">🏆</div>
+      <h2 id="overTitle"></h2>
+      <p id="overSub"></p>
+      <div class="finalscores" id="finalScores"></div>
+      <button class="btn" id="againBtn">Play again 🔁</button>
+      <button class="linkbtn" id="overPeek">Look at the paper</button>
+    </div>
+  </section>
+
+  <div class="banner" id="banner" hidden><div class="bcard"><div class="big"></div><div class="small"></div></div></div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"
+          onerror="var s=document.createElement('script');s.src='https://unpkg.com/@supabase/supabase-js@2.117.2/dist/umd/supabase.js';document.head.appendChild(s)"></script>
+  <script src="game.js?v=4"></script>
+</body>
+</html>
